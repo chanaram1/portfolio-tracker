@@ -5,7 +5,6 @@ import os
 
 
 def initialize_services():
-    """Initialize services with API keys."""
     polygon_api_key = os.getenv('POLYGON_API_KEY')
     AssetHandlerFactory.initialize(polygon_api_key)
 
@@ -16,15 +15,13 @@ def handle_portfolio_operations(user_id: str):
     while True:
         print("\n=== Portfolio Management ===")
         print("1. Add New Stock")
-        # print("2. Add New Crypto")
-        # print("3. Add New Pokemon")
-        print("2. View Your Stock Portfolio")
-        # print("4. View Your Portfolio")
-        print("3. Update a stock in Portfolio")
-        print("4. Delete a stock in Portfolio")
-        print("5. Return to Main Menu")
+        print("2. Add New Crypto")
+        print("3. View Your Portfolio")
+        print("4. Update Asset in Portfolio")
+        print("5. Delete Asset from Portfolio")
+        print("6. Return to Main Menu")
 
-        choice = input("\nSelect an option (1-5): ")
+        choice = input("\nSelect an option (1-6): ")
 
         if choice == "1":
             symbol = input("Enter stock symbol (e.g., AAPL): ")
@@ -39,18 +36,21 @@ def handle_portfolio_operations(user_id: str):
                     print(f"Error: {validation_result.error_message}")
                     continue
 
-                stock_data = validation_result.data
-                result = portfolio.add_stock(user_id, {
-                    "symbol": validation_result.formatted_symbol,
-                    "name": stock_data.get('name', validation_result.formatted_symbol),
-                    "quantity": quantity,
-                    "current_price": stock_data.get('current_price'),
-                })
+                asset_data = validation_result.data
+                asset_data['quantity'] = quantity 
+
+                result = portfolio.add_asset(user_id, asset_data)
 
                 if result:
-                    print(f"\n Asset added successfully!")
+                    print(f"\nStock added successfully!")
+                    print(f"Symbol: {validation_result.formatted_symbol}")
+                    print(f"Name: {asset_data.get('name', 'N/A')}")
+                    print(f"Quantity: {quantity}")
+                    if asset_data.get('current_price'):
+                        print(
+                            f"Current Price: ${asset_data['current_price']:.2f}")
                 else:
-                    print("Failed to add asset to portfolio")
+                    print("Failed to add stock to portfolio")
 
             except ValueError:
                 print("Please enter a valid number for quantity")
@@ -58,68 +58,82 @@ def handle_portfolio_operations(user_id: str):
                 print(f"An error occurred: {str(e)}")
 
         elif choice == "2":
+            symbol = input("Enter crypto symbol (e.g., BTC): ")
+            try:
+                quantity = float(input("Enter quantity: "))
+
+                print(f"Validating crypto symbol '{symbol}'...")
+                validation_result = AssetHandlerFactory.validate_asset(
+                    AssetType.CRYPTO, symbol)
+
+                if not validation_result.is_valid:
+                    print(f"Error: {validation_result.error_message}")
+                    continue
+
+                asset_data = validation_result.data
+                asset_data['quantity'] = quantity
+
+                result = portfolio.add_asset(user_id, asset_data)
+
+                if result:
+                    print(f"\nCryptocurrency added successfully!")
+                    print(f"Symbol: {validation_result.formatted_symbol}")
+                    print(f"Name: {asset_data.get('name', 'N/A')}")
+                    print(f"Quantity: {quantity}")
+                    if asset_data.get('current_price'):
+                        print(
+                            f"Current Price: ${asset_data['current_price']:.2f}")
+                else:
+                    print("Failed to add crypto to portfolio")
+
+            except ValueError:
+                print("Please enter a valid number for quantity")
+            except Exception as e:
+                print(f"An error occurred: {str(e)}")
+
+        elif choice == "3":
             print("\nFetching your portfolio...")
             result = portfolio.view_portfolio(user_id)
             if result and result.data:
                 print(f"\n=== Your Portfolio ({len(result.data)} assets) ===")
                 total_portfolio_value = 0
 
-                for asset in result.data:
-                    print(
-                        f"\nAsset: {asset['asset_name']} ({asset['symbol']})")
-                    print(f"   Quantity: {asset['quantity']}")
+                stocks = [
+                    asset for asset in result.data if asset['asset_type'] == 'stock']
+                cryptos = [
+                    asset for asset in result.data if asset['asset_type'] == 'crypto']
 
-                    if asset.get('current_price'):
-                        asset_value = asset['current_price'] * \
-                            asset['quantity']
-                        print(f"   Price: ${asset['current_price']:.2f}")
-                        print(f"   Total Value: ${asset_value:.2f}")
-                        total_portfolio_value += asset_value
+                if stocks:
+                    print(f"\nSTOCKS ({len(stocks)})")
+                    for asset in stocks:
+                        print(f"   {asset['asset_name']} ({asset['symbol']})")
+                        print(f"   Quantity: {asset['quantity']}")
+                        if asset.get('current_price'):
+                            asset_value = asset['current_price'] * \
+                                asset['quantity']
+                            print(f"   Price: ${asset['current_price']:.2f}")
+                            print(f"   Total Value: ${asset_value:.2f}")
+                            total_portfolio_value += asset_value
+                        print()
+
+                if cryptos:
+                    print(f"\nCRYPTO ({len(cryptos)})")
+                    for asset in cryptos:
+                        print(f"   {asset['asset_name']} ({asset['symbol']})")
+                        print(f"   Quantity: {asset['quantity']}")
+                        if asset.get('current_price'):
+                            asset_value = asset['current_price'] * \
+                                asset['quantity']
+                            print(f"   Price: ${asset['current_price']:.2f}")
+                            print(f"   Total Value: ${asset_value:.2f}")
+                            total_portfolio_value += asset_value
+                        print()
 
                 if total_portfolio_value > 0:
                     print(
-                        f"\nTotal Portfolio Value: ${total_portfolio_value:.2f}")
+                        f"Total Portfolio Value: ${total_portfolio_value:.2f}")
             else:
-                print("📭 No assets found in your portfolio")
-
-        elif choice == "3":
-            print("\nFetching your portfolio...")
-            current_portfolio = portfolio.view_portfolio(user_id)
-
-            if not current_portfolio or not current_portfolio.data:
-                print(" No assets found in your portfolio")
-                break
-            
-            print("\n Your current holdings:")
-            for asset in current_portfolio.data:
-                print(f"{asset['symbol']}: {asset['quantity']} shares")
-
-            symbol = input(
-                "\nEnter the stock symbol to update (e.g., AAPL): ").upper()
-            
-            symbol_exists = any(
-                asset['symbol'] == symbol for asset in current_portfolio.data)
-            if not symbol_exists:
-                print(f"Error: You don't own any shares of {symbol}")
-                continue
-
-            try:
-                quantity = float(input("Enter new quantity: "))
-                if quantity < 0:
-                    print("Error: Quantity cannot be negative")
-                    continue
-                
-                result = portfolio.update_stock(user_id, symbol, quantity)
-                if result:
-                    print(
-                        f"Successfully updated {symbol} quantity to {quantity}")
-                else:
-                    print("Failed to update stock quantity")
-
-            except ValueError:
-                print("Please enter a valid number for quantity")
-            except Exception as e:
-                print(f"An error occurred: {str(e)}")
+                print("No assets found in your portfolio")
 
         elif choice == "4":
             print("\nFetching your portfolio...")
@@ -127,32 +141,78 @@ def handle_portfolio_operations(user_id: str):
 
             if not current_portfolio or not current_portfolio.data:
                 print("No assets found in your portfolio")
-                break
+                continue
 
             print("\nYour current holdings:")
             for asset in current_portfolio.data:
-                print(f"{asset['symbol']}: {asset['quantity']} shares")
+                print(
+                    f"   {asset['symbol']} ({asset['asset_type']}): {asset['quantity']} units")
 
             symbol = input(
-                "\nEnter the stock symbol to delete (e.g., AAPL): ").upper()
+                "\nEnter the symbol to update (e.g., AAPL, BTC): ").upper()
 
             symbol_exists = any(
                 asset['symbol'] == symbol for asset in current_portfolio.data)
             if not symbol_exists:
-                print(f"Error: You don't own any shares of {symbol}")
+                print(f"Error: You don't own any {symbol}")
                 continue
 
             try:
-                result = portfolio.delete_stock(user_id, symbol)
+                quantity = float(input("Enter new quantity: "))
+                if quantity < 0:
+                    print("Error: Quantity cannot be negative")
+                    continue
+
+                result = portfolio.update_asset(user_id, symbol, quantity)
                 if result:
                     print(
-                        f"Successfully deleted {symbol}")
+                        f"Successfully updated {symbol} quantity to {quantity}")
                 else:
-                    print(f"Failed to delete stock {symbol}")
+                    print("Failed to update asset quantity")
+
+            except ValueError:
+                print("Please enter a valid number for quantity")
             except Exception as e:
                 print(f"An error occurred: {str(e)}")
 
         elif choice == "5":
+            print("\nFetching your portfolio...")
+            current_portfolio = portfolio.view_portfolio(user_id)
+
+            if not current_portfolio or not current_portfolio.data:
+                print("No assets found in your portfolio")
+                continue
+
+            print("\nYour current holdings:")
+            for asset in current_portfolio.data:
+                print(
+                    f"   {asset['symbol']} ({asset['asset_type']}): {asset['quantity']} units")
+
+            symbol = input(
+                "\nEnter the symbol to delete (e.g., AAPL, BTC): ").upper()
+
+            symbol_exists = any(
+                asset['symbol'] == symbol for asset in current_portfolio.data)
+            if not symbol_exists:
+                print(f"Error: You don't own any {symbol}")
+                continue
+
+            confirm = input(
+                f"Are you sure you want to delete {symbol}? (yes/no): ").lower()
+            if confirm != 'yes':
+                print("Operation cancelled")
+                continue
+
+            try:
+                result = portfolio.delete_asset(user_id, symbol)
+                if result:
+                    print(f"Successfully deleted {symbol}")
+                else:
+                    print(f"Failed to delete {symbol}")
+            except Exception as e:
+                print(f"An error occurred: {str(e)}")
+
+        elif choice == "6":
             break
 
 
@@ -190,7 +250,7 @@ def main():
         elif choice == "3":
             break
         else:
-            print("Please try again.")
+            print("Invalid choice. Please try again.")
 
 
 if __name__ == "__main__":
