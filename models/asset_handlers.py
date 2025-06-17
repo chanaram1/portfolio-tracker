@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Tuple
 import requests
 from enum import Enum
 import os
@@ -202,6 +202,145 @@ class PolygonCryptoHandler(PolygonBaseHandler):
         return self._get_price_data(formatted_symbol)
 
 
+class TcgcsvBaseHandler(AssetHandler):
+    def __init__(self):
+        self.base_url = "https://tcgcsv.com"
+        self.session = requests.Session()
+
+    def _make_request(self, endpoint: str, params: Dict[str, Any] = None) -> Dict[str, Any]:
+        try:
+            url = f"{self.base_url}{endpoint}"
+            response = self.session.get(url, params=params or {})
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            raise Exception(f"TCGCsv API request failed: {str(e)}")
+
+    @abstractmethod
+    def validate_symbol(self, symbol: str) -> bool:
+        pass
+
+    @abstractmethod
+    def format_symbol(self, symbol: str) -> str:
+        pass
+
+    @abstractmethod
+    def validate_and_enrich(self, symbol: str) -> ValidationResult:
+        pass
+
+    @abstractmethod
+    def get_current_price(self, symbol: str) -> Optional[float]:
+        pass
+
+
+class PokemonHandler(TcgcsvBaseHandler):
+    def __init__(self):
+        super().__init__()
+        self.asset_type = AssetType.POKEMON
+
+    def _parse_combined_id(self, combined_id: str) -> Optional[Tuple[str, str]]:
+        parts = combined_id.strip().split(':')
+        if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
+            return parts[0], parts[1]
+        return None
+
+    def validate_symbol(self, symbol: str) -> bool:
+        return self._parse_combined_id(symbol) is not None
+
+    def format_symbol(self, symbol: str) -> str:
+        return symbol.strip()
+
+    def _get_product_details(self, group_id: str, product_id: str) -> Optional[Dict[str, Any]]:
+        try:
+            endpoint = f"/tcgplayer/3/{group_id}/products"
+            response_data = self._make_request(endpoint)
+            products = response_data.get('results', [])
+            for product in products:
+                if str(product.get('productId')) == product_id:
+                    return product
+            return None
+        except Exception as e:
+            return None
+
+    def _get_price_details(self, group_id: str, product_id: str) -> Optional[float]:
+        try:
+            endpoint = f"/tcgplayer/3/{group_id}/prices"
+            response_data = self._make_request(endpoint)
+            prices = response_data.get('results', [])
+            for price_info in prices:
+                if str(price_info.get('productId')) == product_id:
+                    return float(price_info.get('marketPrice'))
+            return None
+        except Exception as e:
+            return None
+
+    def validate_and_enrich_from_inputs(self, group_id: str, product_id: str) -> ValidationResult:
+        if not group_id.isdigit() or not product_id.isdigit():
+            return ValidationResult(
+                is_valid=False,
+                error_message="Group ID and Product ID must be numeric."
+            )
+
+        try:
+            product_details = self._get_product_details(
+                group_id, product_id)
+            if not product_details:
+                return ValidationResult(
+                    is_valid=False,
+                    formatted_symbol=product_id,
+                    error_message=f"Pokemon product ID '{product_id}' not found in group '{group_id}'."
+                )
+
+            product_name = product_details.get(
+                'name', f"Pokemon Product {product_id}")
+
+            current_price = self._get_price_details(
+                group_id, product_id)
+            if current_price is None:
+                print(
+                    f"Warning: No market price found for {product_name} (ID: {product_id}).")
+
+            pokemon_data = {
+                'symbol': product_id,
+                'name': product_name,
+                'current_price': current_price,
+                'currency': 'USD',
+                'asset_type': self.asset_type
+            }
+
+            return ValidationResult(
+                is_valid=True,
+                formatted_symbol=product_id,
+                data=pokemon_data
+            )
+
+        except Exception as e:
+            return ValidationResult(
+                is_valid=False,
+                formatted_symbol=product_id,
+                error_message=f"Error validating Pokemon product: {str(e)}"
+            )
+
+    def validate_and_enrich(self, symbol: str) -> ValidationResult:
+        parsed_ids = self._parse_combined_id(symbol)
+        if not parsed_ids:
+            return ValidationResult(
+                is_valid=False,
+                error_message=f"Invalid Pokemon symbol format: {symbol}. Expected 'PRODUCTID'."
+            )
+        group_id, product_id = parsed_ids
+        return self.validate_and_enrich_from_inputs(group_id, product_id)
+
+    def get_current_price(self, symbol: str) -> Optional[float]:
+        parsed_ids = self._parse_combined_id(symbol)
+        if not parsed_ids:
+            print(
+                f"Error: Invalid Pokemon symbol format for price lookup: {symbol}")
+            return None
+        group_id, product_id = parsed_ids
+        return self._get_price_details(group_id, product_id)
+    
+
 class AssetHandlerFactory:
     _handlers = {}
 
@@ -209,7 +348,8 @@ class AssetHandlerFactory:
     def initialize(cls, polygon_api_key: str = None):
         cls._handlers = {
             AssetType.STOCK: PolygonStockHandler(api_key=polygon_api_key),
-            AssetType.CRYPTO: PolygonCryptoHandler(api_key=polygon_api_key)
+            AssetType.CRYPTO: PolygonCryptoHandler(api_key=polygon_api_key),
+            AssetType.POKEMON: PokemonHandler()
         }
 
     @classmethod
@@ -233,3 +373,13 @@ class AssetHandlerFactory:
             )
 
         return handler.validate_and_enrich(symbol)
+    
+    @classmethod
+    def validate_pokemon_asset_inputs(cls, group_id: str, product_id: str) -> ValidationResult:
+        handler = cls.get_handler(AssetType.POKEMON)
+        if not handler:
+            return ValidationResult(
+                is_valid=False,
+                error_message="Pokemon handler not available."
+            )
+        return handler.validate_and_enrich_from_inputs(group_id, product_id)

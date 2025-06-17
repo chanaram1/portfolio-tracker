@@ -16,12 +16,13 @@ def handle_portfolio_operations(user_id: str):
         print("\n=== Portfolio Management ===")
         print("1. Add New Stock")
         print("2. Add New Crypto")
-        print("3. View Your Portfolio")
-        print("4. Update Asset in Portfolio")
-        print("5. Delete Asset from Portfolio")
-        print("6. Return to Main Menu")
+        print("3. Add New Pokemon Product")
+        print("4. View Your Portfolio")
+        print("5. Update Asset in Portfolio")
+        print("6. Delete Asset from Portfolio")
+        print("7. Return to Main Menu")
 
-        choice = input("\nSelect an option (1-6): ")
+        choice = input("\nSelect an option (1-7): ")
 
         if choice == "1":
             symbol = input("Enter stock symbol (e.g., AAPL): ")
@@ -92,6 +93,44 @@ def handle_portfolio_operations(user_id: str):
                 print(f"An error occurred: {str(e)}")
 
         elif choice == "3":
+            group_id = input("Enter Pokemon product Group ID (e.g., '604'): ")
+            product_id = input("Enter Pokemon product ID (e.g., '200001'): ")
+            try:
+                quantity = float(input("Enter quantity: "))
+                if quantity <= 0:
+                    print("Quantity must be greater than zero.")
+                    continue
+
+                print(
+                    f"Validating Pokemon product (Group ID: {group_id}, Product ID: {product_id})...")
+                validation_result = AssetHandlerFactory.validate_pokemon_asset_inputs(
+                    group_id, product_id)
+
+                if not validation_result.is_valid:
+                    print(f"Error: {validation_result.error_message}")
+                    continue
+
+                asset_data = validation_result.data
+                asset_data['quantity'] = quantity
+
+                result = portfolio.add_asset(user_id, asset_data)
+
+                if result:
+                    print(f"\nPokemon product added successfully!")
+                    print(f"Product Name: {asset_data.get('name', 'N/A')}")
+                    print(f"Quantity: {quantity}")
+                    if asset_data.get('current_price'):
+                        print(
+                            f"Current Price: ${asset_data['current_price']:.2f}")
+                else:
+                    print("Failed to add Pokemon product to portfolio")
+
+            except ValueError:
+                print("Please enter a valid number for quantity")
+            except Exception as e:
+                print(f"An error occurred: {str(e)}")
+
+        elif choice == "4":
             print("\nFetching your portfolio...")
             result = portfolio.view_portfolio(user_id)
             if result and result.data:
@@ -102,6 +141,8 @@ def handle_portfolio_operations(user_id: str):
                     asset for asset in result.data if asset['asset_type'] == 'stock']
                 cryptos = [
                     asset for asset in result.data if asset['asset_type'] == 'crypto']
+                pokemons = [
+                    asset for asset in result.data if asset['asset_type'] == 'pokemon']
 
                 if stocks:
                     print(f"\nSTOCKS ({len(stocks)})")
@@ -128,6 +169,20 @@ def handle_portfolio_operations(user_id: str):
                             print(f"   Total Value: ${asset_value:.2f}")
                             total_portfolio_value += asset_value
                         print()
+                
+                if pokemons:
+                    print(f"\nPOKEMON PRODUCTS ({len(pokemons)})")
+                    for asset in pokemons:
+                        print(
+                            f"   {asset['asset_name']} (Product ID: {asset['symbol']})")
+                        print(f"   Quantity: {asset['quantity']}")
+                        if asset.get('current_price'):
+                            asset_value = asset['current_price'] * \
+                                asset['quantity']
+                            print(f"   Price: ${asset['current_price']:.2f}")
+                            print(f"   Total Value: ${asset_value:.2f}")
+                            total_portfolio_value += asset_value
+                        print()
 
                 if total_portfolio_value > 0:
                     print(
@@ -135,7 +190,7 @@ def handle_portfolio_operations(user_id: str):
             else:
                 print("No assets found in your portfolio")
 
-        elif choice == "4":
+        elif choice == "5":
             print("\nFetching your portfolio...")
             current_portfolio = portfolio.view_portfolio(user_id)
 
@@ -175,7 +230,7 @@ def handle_portfolio_operations(user_id: str):
             except Exception as e:
                 print(f"An error occurred: {str(e)}")
 
-        elif choice == "5":
+        elif choice == "6":
             print("\nFetching your portfolio...")
             current_portfolio = portfolio.view_portfolio(user_id)
 
@@ -212,7 +267,7 @@ def handle_portfolio_operations(user_id: str):
             except Exception as e:
                 print(f"An error occurred: {str(e)}")
 
-        elif choice == "6":
+        elif choice == "7":
             break
 
 
