@@ -274,34 +274,36 @@ class PokemonHandler(TcgcsvBaseHandler):
         except Exception as e:
             return None
 
-    def validate_and_enrich_from_inputs(self, group_id: str, product_id: str) -> ValidationResult:
-        if not group_id.isdigit() or not product_id.isdigit():
+    def validate_and_enrich_from_inputs(self, group_id_input: str, product_id_input: str) -> ValidationResult:
+        if not group_id_input.isdigit() or not product_id_input.isdigit():
             return ValidationResult(
                 is_valid=False,
                 error_message="Group ID and Product ID must be numeric."
             )
 
+        combined_formatted_symbol = f"{group_id_input.strip()}:{product_id_input.strip()}"
+
         try:
             product_details = self._get_product_details(
-                group_id, product_id)
+                group_id_input, product_id_input)
             if not product_details:
                 return ValidationResult(
                     is_valid=False,
-                    formatted_symbol=product_id,
-                    error_message=f"Pokemon product ID '{product_id}' not found in group '{group_id}'."
+                    formatted_symbol=group_id_input,
+                    error_message=f"Pokemon product ID '{product_id_input}' not found in group '{group_id_input}'."
                 )
 
             product_name = product_details.get(
-                'name', f"Pokemon Product {product_id}")
+                'name', f"Pokemon Product {product_id_input}")
 
             current_price = self._get_price_details(
-                group_id, product_id)
+                group_id_input, product_id_input)
             if current_price is None:
                 print(
-                    f"Warning: No market price found for {product_name} (ID: {product_id}).")
+                    f"Warning: No market price found for {product_name} (ID: {product_id_input}).")
 
             pokemon_data = {
-                'symbol': product_id,
+                'symbol': combined_formatted_symbol,
                 'name': product_name,
                 'current_price': current_price,
                 'currency': 'USD',
@@ -310,14 +312,14 @@ class PokemonHandler(TcgcsvBaseHandler):
 
             return ValidationResult(
                 is_valid=True,
-                formatted_symbol=product_id,
+                formatted_symbol=combined_formatted_symbol,
                 data=pokemon_data
             )
 
         except Exception as e:
             return ValidationResult(
                 is_valid=False,
-                formatted_symbol=product_id,
+                formatted_symbol=combined_formatted_symbol,
                 error_message=f"Error validating Pokemon product: {str(e)}"
             )
 
